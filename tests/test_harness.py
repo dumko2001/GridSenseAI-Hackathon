@@ -88,7 +88,7 @@ class TestPhysicsConstraints:
         wf = pd.read_parquet("data/weather/weather_all.parquet")
         res = apply_residual_layer(bf, wf, PLANTS)
         phy = apply_physics_constraints(res, wf, PLANTS)
-        out = generate_explanations(phy, use_api=False)
+        out = generate_explanations(phy)
         assert out["explanation"].notna().all()
         assert (out["explanation"].str.len() > 10).all()
 

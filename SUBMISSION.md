@@ -25,9 +25,9 @@
 | **Existing systems cannot be modified** | ✅ | We read exported CSV/JSON feeds. No SCADA system integration needed. |
 | **Must act as forecasting layer** | ✅ | FastAPI serves forecasts via REST. SLDC keeps existing dashboards. |
 | **Works with masked/synthetic data** | ✅ | `synthetic_scada.csv` is fully synthetic with realistic weather correlation. |
-| **Explainable at operational level** | ✅ | Template explanations work 100% offline. Groq LLM is opt-in via env var only. |
+| **Explainable at operational level** | ✅ | 100% offline template explanations. Deterministic, auditable, zero external dependency. |
 | **Uncertainty explicitly represented** | ✅ | `confidence_lower` and `confidence_upper` in every JSON response. |
-| **No hosted LLM on sensitive data** | ✅ | Default mode is fully offline (template explanations). Groq is opt-in and receives **only** weather metadata (cloud%, wind speed, GHI). |
+| **No hosted LLM on sensitive data** | ✅ | Zero LLM usage. Explainability is 100% deterministic template-based. No external AI APIs called. |
 
 ---
 
@@ -67,9 +67,9 @@
 - **Ramp limit:** Track max hourly change (25% of capacity)
 
 ### Pass 4: Explainability
-- **Default:** Template-based explanations (100% offline, zero external dependency)
-- **Optional:** Groq API (Llama 3.3 70B) via `ENABLE_GROQ=true` — receives only weather metadata
-- **Privacy guarantee:** SCADA values never leave the system; Groq is opt-in
+- **Method:** Deterministic template-based explanations (100% offline)
+- **Why templates over LLMs:** Operators need exact MW values, physics reasons, and clamp details — not vague prose. Templates are faster (~0ms), cheaper (₹0), auditable, and more operationally useful.
+- **Privacy guarantee:** Zero external API calls. No data leaves the system.
 
 ### Cluster Aggregation
 - **Endpoint:** `POST /forecast/cluster`
@@ -149,7 +149,7 @@ curl -X POST http://localhost:8000/forecast/cluster \
 | Uses synthetic SCADA (per competition rules) | Weather data is real Open-Meteo. Architecture is production-ready for real SCADA feeds. |
 | Satellite imagery is Open-Meteo proxy (not real IR) | MOSDAC registration in progress. Code slot ready for HDF5 IR imagery via Satpy. |
 | Residual layer is rule-based, not ML-trained | Sufficient for prototype. Upgrade path: train ResNet-18 on INSAT cloud patches. |
-| Explainability uses Groq API (external) | Only weather metadata sent. Fallback templates ensure zero dependency. On-premise vLLM for production. |
+| Explainability is template-based (not LLM) | Templates are more operationally useful than LLM prose for grid operators. On-premise vLLM is a future option if natural language variety is needed. |
 
 ---
 

@@ -38,8 +38,7 @@ scipy>=1.11.0
 pytest>=7.4.0
 httpx>=0.25.0
 
-# LLM Explainability (Groq)
-groq>=1.0.0
+# Config
 python-dotenv>=1.0.0
 
 # Optional: Satpy for MOSDAC HDF5 (can be tricky to install; fallback to h5py)

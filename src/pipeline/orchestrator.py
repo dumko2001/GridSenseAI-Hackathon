@@ -53,8 +53,8 @@ def run_full_pipeline(plant_id: str, forecast_timestamp: str = None, prediction_
     pred_df = apply_residual_layer(pred_df, future_weather, PLANTS)
     # Physics
     pred_df = apply_physics_constraints(pred_df, future_weather, PLANTS)
-    # Explainability (Groq LLM for natural language, falls back to template)
-    pred_df = generate_explanations(pred_df, use_api=True)
+    # Explainability (100% offline template-based)
+    pred_df = generate_explanations(pred_df)
 
     return pred_df
 

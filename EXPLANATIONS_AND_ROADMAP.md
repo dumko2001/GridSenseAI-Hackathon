@@ -90,24 +90,28 @@ You need a login to download the HDF5 satellite files. Do it today: https://www.
 
 ---
 
-## 6. Groq Integration Status ✅
+## 6. Explainability: Why We Use Templates, Not LLMs
 
-**What was done:**
-- Saved your Groq API key to `.env`
-- Integrated `groq` Python SDK into `explainability.py`
-- Using **Llama 3.3 70B** (fastest available model on Groq as of May 2026)
-- **Security:** We ONLY send weather metadata (cloud %, wind speed, GHI) to Groq. No plant IDs, no SCADA values, no grid topology.
+**Design decision:** GridSense AI uses 100% deterministic template-based explanations. No LLMs. No external APIs.
 
-**Example live output:**
+**Why templates are better than LLMs for grid operations:**
+
+| Dimension | Template (GridSense) | LLM (Typical Approach) |
+|-----------|---------------------|----------------------|
+| **Precision** | "Downward adjustment of 18.5 MW due to 37% cloud cover" | "Moderate reduction due to weather conditions" |
+| **Speed** | ~0ms (string concatenation) | ~500ms (API round-trip) |
+| **Cost** | ₹0 | ₹0.005–0.02 per call |
+| **Determinism** | Same input → same output (auditable) | Nondeterministic (temperature sampling) |
+| **Offline** | Works with no internet | Requires API connectivity |
+| **Compliance** | Zero risk of data leakage | Requires careful prompt engineering & review |
+
+**Example template output:**
 ```
-At 11:00 IST, the solar generation forecast is 73.8 MW, which is 9.4 MW below 
-the baseline forecast, likely due to being capped by the clear-sky GHI limit 
-despite favorable weather conditions.
+Solar plant at 13:00 IST: Baseline forecast 66.5 MW. Downward adjustment of 18.5 MW 
+due to cloud cover (37%). Output capped by clear-sky GHI limit.
 ```
 
-**Cost:** ~₹0.005 per explanation. For 50 plants × 24 hours = ₹6/day. Negligible.
-
-**Fallback:** If Groq is down or rate-limited, template explanations kick in automatically.
+**Future option:** If natural language variety becomes a requirement (e.g., for public-facing reports), we can add an on-premise vLLM (Llama 3 via vLLM) running on the State Data Centre GPU. But for operational SLDC use, templates are superior.
 
 ---
 

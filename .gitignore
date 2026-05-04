@@ -54,3 +54,4 @@ htmlcov/
 
 # Streamlit
 .streamlit/
+reports/

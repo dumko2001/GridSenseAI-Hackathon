@@ -22,6 +22,9 @@ from pipeline.baseline_forecaster import load_pipeline, forecast_baseline
 from pipeline.residual_adjuster import apply_residual_layer
 from pipeline.physics_constraints import apply_physics_constraints
 from pipeline.explainability import generate_explanations
+from pipeline.data_quality import check_data_quality, generate_quality_report
+from pipeline.cerc_compliance import compute_cerc_metrics, generate_cerc_report
+from pipeline.operator_override import OverrideRule, get_override_manager
 
 app = FastAPI(title="GridSense AI Forecast API", version="0.1.0")
 
@@ -107,9 +110,8 @@ def forecast(req: ForecastRequest):
     pred_df = apply_residual_layer(pred_df, future_weather, PLANTS)
     # Physics
     pred_df = apply_physics_constraints(pred_df, future_weather, PLANTS)
-    # Explainability (offline template by default; Groq optional via env)
-    use_groq = os.getenv("ENABLE_GROQ", "false").lower() == "true"
-    pred_df = generate_explanations(pred_df, use_api=use_groq)
+    # Explainability (100% offline template-based)
+    pred_df = generate_explanations(pred_df)
 
     results = []
     for _, row in pred_df.iterrows():
@@ -172,7 +174,7 @@ def forecast_cluster(req: ClusterForecastRequest):
         ].copy()
         pred_df = apply_residual_layer(pred_df, future_weather, PLANTS)
         pred_df = apply_physics_constraints(pred_df, future_weather, PLANTS)
-        pred_df = generate_explanations(pred_df, use_api=False)
+        pred_df = generate_explanations(pred_df)
         all_plant_forecasts.append(pred_df)
 
     if not all_plant_forecasts:
@@ -215,6 +217,81 @@ def forecast_cluster(req: ClusterForecastRequest):
             key_drivers=f"{len(breakdown)} plants aggregated"
         ))
     return results
+
+
+# ── Override Endpoints ──────────────────────────────────────
+
+class OverrideRequest(BaseModel):
+    plant_id: str
+    start_time: str
+    end_time: str
+    override_type: str  # zero, cap, scale, absolute
+    value: Optional[float] = None
+    reason: str
+    created_by: str = "operator"
+
+
+@app.post("/override")
+def create_override(req: OverrideRequest):
+    """SLDC operator creates an override (maintenance, curtailment, etc.)."""
+    mgr = get_override_manager()
+    rule = OverrideRule(
+        plant_id=req.plant_id,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        override_type=req.override_type,
+        value=req.value,
+        reason=req.reason,
+        created_by=req.created_by,
+    )
+    mgr.add_rule(rule)
+    return {"status": "created", "rule": rule.to_dict()}
+
+
+@app.get("/overrides")
+def list_overrides(plant_id: Optional[str] = None):
+    """List active operator overrides."""
+    mgr = get_override_manager()
+    return {"overrides": mgr.list_rules(plant_id)}
+
+
+@app.delete("/override/clear")
+def clear_expired_overrides():
+    """Remove expired override rules."""
+    mgr = get_override_manager()
+    mgr.clear_expired()
+    return {"status": "cleared"}
+
+
+# ── Data Quality Endpoint ───────────────────────────────────
+
+@app.get("/data-quality")
+def data_quality():
+    """Run data quality checks on SCADA input and return issues."""
+    scada = pd.read_csv("data/synthetic_scada/synthetic_scada.csv", parse_dates=["timestamp"])
+    clean, issues = check_data_quality(scada, PLANTS)
+    report_path = generate_quality_report(issues)
+    return {
+        "total_issues": len(issues),
+        "critical_count": sum(1 for i in issues if i["severity"] == "critical"),
+        "warning_count": sum(1 for i in issues if i["severity"] == "warning"),
+        "issues": issues,
+        "report_file": report_path,
+    }
+
+
+# ── CERC Compliance Endpoint ────────────────────────────────
+
+@app.get("/compliance")
+def compliance():
+    """Benchmark forecast accuracy against CERC regulatory limits."""
+    forecasts = pd.read_parquet("models/baseline/baseline_forecasts.parquet")
+    actuals = pd.read_parquet("models/baseline/baseline_actuals.parquet")
+    if "predictions" in forecasts.columns:
+        forecasts = forecasts.rename(columns={"predictions": "forecast_MW"})
+    metrics = compute_cerc_metrics(forecasts, actuals, PLANTS)
+    report = generate_cerc_report(metrics)
+    return report
 
 
 if __name__ == "__main__":
