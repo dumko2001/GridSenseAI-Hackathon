@@ -200,7 +200,8 @@ curl -X POST http://localhost:8000/forecast/cluster \
 | `requirements.txt` | Python dependencies |
 | `src/` | Source code (data, pipeline, API) |
 | `dashboard/` | Streamlit UI |
-| `tests/` | Test harness (9/10 passing) |
+| `research/` | PINN experiment + satellite CNN architecture (Phase 2 proof-of-concepts) |
+| `tests/` | Test harness (10/10 passing) |
 | `Dockerfile` + `docker-compose.yml` | One-command deployment |
 | `.env.example` | Environment variable template |
 
@@ -225,7 +226,7 @@ curl -X POST http://localhost:8000/forecast/cluster \
 | Uses synthetic SCADA (per competition rules) | Weather data is real (NASA POWER + Open-Meteo). Architecture is production-ready for real SCADA feeds. One-line swap: `pd.read_csv("kspdcl_scada.csv")` |
 | Wind forecast RMSE exceeds CERC limits (35–47% vs 12% mandated) | Wind forecasting is a known industry challenge. Our residual + physics layers help, but production needs wind-specific feature engineering (wind shear, turbulence intensity, wake effects). Solar is well within limits (1.3–1.9%). |
 | Satellite imagery is Open-Meteo proxy (not real IR) | Code slot ready for HDF5 IR imagery via Satpy. 2-line swap in `residual_adjuster.py`. |
-| Residual layer is rule-based, not ML-trained | Sufficient for prototype. Upgrade path: train small CNN on satellite cloud patches for spatial cloud tracking. |
+| Residual layer is rule-based, not ML-trained | Sufficient for prototype. Research module ready: `research/pinn_turbine_curve.py` implements PINN for turbine power curves. Production upgrade: CNN on MOSDAC IR patches for spatial cloud tracking. |
 | Explainability is template-based (not LLM) | **Intentional design.** Templates are faster, cheaper, deterministic, and more operationally precise than LLM prose. On-premise vLLM is a future option for public-facing reports. |
 | No real-time SCADA ingestion | Prototype reads CSV files. Production would use MQTT/Modbus TCP listener or Kafka stream from SCADA historian. Architecture supports this — just swap the data loader. |
 
