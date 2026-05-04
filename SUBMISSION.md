@@ -43,39 +43,115 @@
 
 ---
 
-## 4. Architecture Deep Dive
+## 4. What We Use Now and Why
 
-### Pass 1: Numerical Baseline
+### Data Stack (Exact Sources)
+
+| Component | Source | Real or Synthetic | Why We Chose It |
+|-----------|--------|-------------------|-----------------|
+| **Solar irradiance (GHI)** | NASA POWER satellite-derived | **100% real** | Satellite measurements for exact Karnataka coordinates. Free, global, no registration. More defensible than pure math. |
+| **Weather covariates** | Open-Meteo API | **100% real** | Non-profit Swiss weather service. Free, self-hostable via Docker, no API key needed. Multiple model backends (ECMWF, GFS, ICON) for redundancy. |
+| **SCADA generation history** | Synthetic from NASA GHI × performance ratio | **Physics-based synthetic** | Competition rules: "real data may not be shared." We build generation from real irradiance × industry-standard 0.78–0.82 performance ratio + realistic noise. This is NOT random data — it follows actual physics. |
+| **Plant metadata** | Karnataka public records + industry standards | **Real coordinates, synthetic names** | Pavagada, Raichur, Koppal are real solar zones. Coordinates match actual plants. Capacities are realistic for the regions. |
+
+**Why this stack is the strongest choice for the hackathon:**
+- KSPDCL will NOT give you real SCADA for a competition. Period.
+- Using NASA POWER + Open-Meteo proves your architecture works with real meteorological inputs.
+- The synthetic SCADA is built from physics, not random numbers. A 100 MW plant peaks at ~84 MW (realistic for Indian utility solar with 18% system losses).
+- In production, you swap `synthetic_scada.csv` for `kspdcl_scada_feed.csv`. One line of code.
+
+### Production Data Flow
+
+```
+Production KSPDCL Deployment:
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  SCADA Export   │────▶│  Data Quality    │────▶│  Chronos-Bolt   │
+│  (CSV/JSON)     │     │  Check (gaps,    │     │  Baseline       │
+│  Every hour     │     │  flatlines)      │     │  Forecast       │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+                                                          │
+┌─────────────────┐     ┌──────────────────┐     ┌────────▼────────┐
+│  Excel Report   │◄────│  Physics +       │◄────│  Weather        │
+│  /reports/*.csv │     │  Override Layer  │     │  Residual       │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  CERC Compliance│
+│  Check (daily)  │
+└─────────────────┘
+```
+
+### 4-Pass Forecasting Pipeline
+
+**Pass 1: Numerical Baseline**
 - **Model:** Amazon Chronos-Bolt-Small (48M params, Apache 2.0)
 - **Input:** 7 days (168h) of historical generation_MW
-- **Output:** 24-hour probabilistic forecast with quantiles
-- **Innovation:** Zero-shot — no training on your data needed. Works on Day 1 for new plants.
+- **Output:** 24-hour probabilistic forecast with native quantiles (0.1, 0.5, 0.9)
+- **Innovation:** Zero-shot. No training on your data. Works on Day 1 for new plants.
 
-### Pass 2: Residual Adjustment
-- **Input:** Open-Meteo weather data (cloud cover %, wind speed, GHI)
-- **Mechanism:** Rule-based cloud attenuation mapping
+**Pass 2: Weather Residual**
+- **Input:** Open-Meteo cloud cover, wind speed, GHI
+- **Mechanism:** Rule-based cloud attenuation
   - cloud < 20% → no adjustment
   - cloud 20–50% → −cloud% × capacity × 0.5
   - cloud 50–75% → −cloud% × capacity × 0.65
   - cloud > 75% → −cloud% × capacity × 0.75
-- **Future upgrade:** Swap Open-Meteo proxy for real MOSDAC IR imagery (2-line code change)
+- **Why rule-based:** Fast, interpretable, no training data needed. Catches sudden weather shifts the baseline misses.
 
-### Pass 3: Physics Constraints
-- **Solar:** Cap at clear-sky GHI × plant capacity × 0.8 derating factor
+**Pass 3: Physics Constraints**
+- **Solar:** Cap at clear-sky GHI × capacity × 0.8 derating factor
 - **Wind:** Enforce turbine power curve (cut-in 3.5 m/s, rated 12 m/s, cut-out 25 m/s)
 - **Hard cap:** Never exceed plant rated capacity
-- **Ramp limit:** Track max hourly change (25% of capacity)
+- **Floor:** Generation cannot be negative
+- **Why this matters:** A model that predicts 120 MW from a 100 MW plant is worse than useless — it damages trust. Physics ensures impossible outputs are corrected before they reach the operator.
 
-### Pass 4: Explainability
-- **Method:** Deterministic template-based explanations (100% offline)
-- **Why templates over LLMs:** Operators need exact MW values, physics reasons, and clamp details — not vague prose. Templates are faster (~0ms), cheaper (₹0), auditable, and more operationally useful.
-- **Privacy guarantee:** Zero external API calls. No data leaves the system.
+**Pass 4: Explainability**
+- **Method:** Deterministic template-based (100% offline)
+- **Why templates beat LLMs:**
+  - Exact values: "Downward adjustment of 18.5 MW due to 37% cloud cover"
+  - Physics reasons: "Capped by clear-sky GHI limit (0 W/m²)"
+  - Deterministic: same forecast → same explanation (auditable)
+  - Zero latency, zero cost, zero external dependency
+- **Privacy:** No API calls. No data leaves the system.
+
+### Operational Features (Beyond Forecasting)
+
+**Data Quality Monitor (`GET /data-quality`)**
+Real SCADA is messy. Sensors fail, inverters freeze, communication links drop. We detect:
+- Missing timestamps (gap detection)
+- Flatlined values (>6 hours same reading = sensor freeze)
+- Impossible values (negative generation, >110% capacity)
+- Sudden spikes (>50% change in 1 hour = communication error)
+- *Why this matters:* Garbage in → garbage out. SLDC operators can't trust a forecast built on corrupted data.
+
+**CERC Compliance Checker (`GET /compliance`)**
+India's Central Electricity Regulatory Commission mandates:
+- Solar: forecast error must be ≤15% of capacity (RMSE)
+- Wind: forecast error must be ≤12% of capacity (RMSE)
+- Exceeding limits → DSM penalties (₹3–5 per unit deviation)
+- Our solar plants: 1.3–1.9% RMSE (✅ well within limit)
+- Our wind plants: 35–47% RMSE (⚠️ known industry challenge; residual + physics layers reduce but wind forecasting needs dedicated feature engineering in production)
+- *Why this matters:* Government jurors care about regulatory compliance. Showing you know CERC limits proves you understand the real operational context.
+
+**Human-in-the-Loop Override (`POST /override`)**
+SLDC operators know things the model doesn't:
+- "Pavagada inverter #3 down for maintenance tomorrow 10 AM–2 PM"
+- "RLDC issued curtailment order for Hassan wind farm"
+- Operators create override rules via API. Forecasts automatically respect them.
+- *Why this matters:* Forecasting is a partnership between AI and human expertise. A system that ignores operator knowledge will be rejected.
+
+**Auto-Scheduler (`src/scheduler.py`)**
+- Runs day-ahead forecast at 06:00 IST → writes `day_ahead_YYYYMMDD.csv`
+- Runs intra-day update at 12:00 IST → writes `intraday_YYYYMMDD.csv`
+- Excel-ready format: plant_id, timestamp, forecast_MW, confidence_lower, confidence_upper, explanation
+- *Why this matters:* SLDC operators don't want to click a dashboard. They want a CSV file in a shared folder at 06:15 AM that they can open in Excel and paste into their dispatch schedule.
 
 ### Cluster Aggregation
 - **Endpoint:** `POST /forecast/cluster`
-- **Input:** List of `plant_ids` + horizon
+- **Input:** Any list of `plant_ids` + horizon
 - **Output:** Aggregated MW + per-plant breakdown + combined confidence bands
-- **Use case:** SLDC regional scheduling, renewable portfolio management
+- **Use case:** Karnataka SLDC manages regions, not individual plants. "How much will North Karnataka generate tomorrow?" → cluster endpoint.
 
 ---
 
@@ -130,15 +206,15 @@ curl -X POST http://localhost:8000/forecast/cluster \
 
 ---
 
-## 7. Evaluation Criteria Mapping
+## 7. Evaluation Criteria Mapping (How We Maximize Each %)
 
-| Criteria (Weight) | How We Score |
-|-------------------|--------------|
-| **Problem Relevance (20%)** | Directly addresses Karnataka SLDC forecasting gaps. Uses Indian weather data & ISRO-ready satellite pipeline. |
-| **Technical Implementation (25%)** | 3-pass fusion architecture (baseline + residual + physics) with quantified uncertainty. Working code, not slides. |
-| **Deployability (25%)** | FastAPI + Docker + CPU-only. No SCADA changes. Air-gappable. CSV/JSON in-out. |
-| **Demo Quality (15%)** | Interactive Streamlit dashboard with live chart, insights, alerts, export. API auto-docs at `/docs`. |
-| **Scalability (15%)** | Clear upgrade path: Chronos-2 → GPU, MOSDAC real imagery, on-premise vLLM, K8s deployment. |
+| Criteria (Weight) | How We Score | Evidence |
+|-------------------|--------------|----------|
+| **Problem Relevance (20%)** | Directly addresses Karnataka SLDC forecasting gaps. Uses real Indian plant coordinates (Pavagada, Raichur, Koppal, Chitradurga, Hassan). Understands CERC regulatory penalties (₹3–5/unit DSM charges). | `src/pipeline/cerc_compliance.py` |
+| **Technical Implementation (25%)** | 4-pass fusion (baseline + residual + physics + explainability). Zero-shot foundation model. Native quantile uncertainty. Physics-enforced constraints. **Plus** data quality monitoring, operator overrides, and auto-scheduling. | `src/pipeline/` directory, `src/scheduler.py` |
+| **Deployability (25%)** | FastAPI + Docker + CPU-only. No SCADA changes. Air-gappable. CSV/JSON in-out. **Excel-ready reports** for operators who don't use dashboards. Human override API for maintenance/curtailment. | `Dockerfile`, `src/scheduler.py`, `/override` endpoint |
+| **Demo Quality (15%)** | Interactive Streamlit dashboard + live API + auto-generated CSV reports + data quality alerts + CERC compliance metrics. API auto-docs at `/docs`. | `dashboard/app.py`, `src/api/main.py` |
+| **Scalability (15%)** | Clear upgrade path: Chronos-2 → GPU, IMD NWP weather, real SCADA feed. Error attribution per pass. Kubernetes deployment spec. | `EXPLANATIONS_AND_ROADMAP.md` |
 
 ---
 
@@ -146,10 +222,12 @@ curl -X POST http://localhost:8000/forecast/cluster \
 
 | Limitation | Mitigation |
 |------------|------------|
-| Uses synthetic SCADA (per competition rules) | Weather data is real Open-Meteo. Architecture is production-ready for real SCADA feeds. |
-| Satellite imagery is Open-Meteo proxy (not real IR) | MOSDAC registration in progress. Code slot ready for HDF5 IR imagery via Satpy. |
-| Residual layer is rule-based, not ML-trained | Sufficient for prototype. Upgrade path: train ResNet-18 on INSAT cloud patches. |
-| Explainability is template-based (not LLM) | Templates are more operationally useful than LLM prose for grid operators. On-premise vLLM is a future option if natural language variety is needed. |
+| Uses synthetic SCADA (per competition rules) | Weather data is real (NASA POWER + Open-Meteo). Architecture is production-ready for real SCADA feeds. One-line swap: `pd.read_csv("kspdcl_scada.csv")` |
+| Wind forecast RMSE exceeds CERC limits (35–47% vs 12% mandated) | Wind forecasting is a known industry challenge. Our residual + physics layers help, but production needs wind-specific feature engineering (wind shear, turbulence intensity, wake effects). Solar is well within limits (1.3–1.9%). |
+| Satellite imagery is Open-Meteo proxy (not real IR) | Code slot ready for HDF5 IR imagery via Satpy. 2-line swap in `residual_adjuster.py`. |
+| Residual layer is rule-based, not ML-trained | Sufficient for prototype. Upgrade path: train small CNN on satellite cloud patches for spatial cloud tracking. |
+| Explainability is template-based (not LLM) | **Intentional design.** Templates are faster, cheaper, deterministic, and more operationally precise than LLM prose. On-premise vLLM is a future option for public-facing reports. |
+| No real-time SCADA ingestion | Prototype reads CSV files. Production would use MQTT/Modbus TCP listener or Kafka stream from SCADA historian. Architecture supports this — just swap the data loader. |
 
 ---
 
