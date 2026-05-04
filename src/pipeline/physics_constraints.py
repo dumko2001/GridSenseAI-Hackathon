@@ -69,26 +69,29 @@ def apply_physics_constraints(df, weather_df, plant_meta):
                 was_clamped = True
         else:
             # Wind
-            ws = row.get("wind_speed_10m", 0)
+            ws = row.get("wind_speed_10m")
             if pd.isna(ws):
-                ws = 0
-            per_turbine = wind_power_curve_mw(
-                ws,
-                meta.get("cut_in_ms", 3.5),
-                meta.get("rated_wind_ms", 12.0),
-                meta.get("cut_out_ms", 25.0),
-                meta.get("turbine_rated_power_mw", 2.5)
-            )
-            max_wind = per_turbine * meta.get("n_turbines", 1)
-            if val > max_wind:
-                val = max_wind
-                clamp_reason = f"Capped by turbine power curve at {ws:.1f} m/s"
-                was_clamped = True
-            if ws < meta.get("cut_in_ms", 3.5):
-                if val > 0:
-                    val = 0.0
-                    clamp_reason = f"Zeroed: wind {ws:.1f} m/s below cut-in"
+                # Weather data missing for this forecast timestamp — skip wind-specific physics,
+                # only apply hard capacity cap and floor below
+                pass
+            else:
+                per_turbine = wind_power_curve_mw(
+                    ws,
+                    meta.get("cut_in_ms", 3.5),
+                    meta.get("rated_wind_ms", 12.0),
+                    meta.get("cut_out_ms", 25.0),
+                    meta.get("turbine_rated_power_mw", 2.5)
+                )
+                max_wind = per_turbine * meta.get("n_turbines", 1)
+                if val > max_wind:
+                    val = max_wind
+                    clamp_reason = f"Capped by turbine power curve at {ws:.1f} m/s"
                     was_clamped = True
+                if ws < meta.get("cut_in_ms", 3.5):
+                    if val > 0:
+                        val = 0.0
+                        clamp_reason = f"Zeroed: wind {ws:.1f} m/s below cut-in"
+                        was_clamped = True
 
         # Hard cap at plant capacity (ceiling)
         if val > cap:

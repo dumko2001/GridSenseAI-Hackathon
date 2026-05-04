@@ -159,6 +159,11 @@ def forecast_cluster(req: ClusterForecastRequest):
             continue
         pred_df = forecast_baseline(pipeline, ctx, prediction_length=req.prediction_hours)
         pred_df["plant_id"] = pid
+        # Rename quantile columns for consistency
+        if "0.1" in pred_df.columns:
+            pred_df["confidence_lower"] = pred_df["0.1"]
+        if "0.9" in pred_df.columns:
+            pred_df["confidence_upper"] = pred_df["0.9"]
         last_ts = ctx["timestamp"].max()
         future_weather = weather[
             (weather["plant_id"] == pid) &
