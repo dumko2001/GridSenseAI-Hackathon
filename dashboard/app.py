@@ -160,6 +160,40 @@ with st.sidebar:
         st.caption("3. **Physics** — Turbine curves & GHI caps ensure valid output")
         st.caption("4. **Explain** — LLM generates operator-readable reasons")
     
+    with st.expander("📊 Daily Reports"):
+        st.caption("Generate Excel-ready CSV reports for all plants")
+        if st.button("📝 Generate Daily Report", use_container_width=True):
+            with st.spinner("Running forecasts for all plants..."):
+                try:
+                    import subprocess
+                    import os
+                    result = subprocess.run(
+                        ["python", "src/scheduler.py", "--mode", "custom", "--hours", "24"],
+                        capture_output=True,
+                        text=True,
+                        cwd=os.path.dirname(os.path.dirname(__file__)),
+                        timeout=120
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ Daily report generated!")
+                        # Find the latest report
+                        import glob
+                        reports = glob.glob("reports/custom_*.csv")
+                        if reports:
+                            latest = max(reports, key=os.path.getctime)
+                            with open(latest, "rb") as f:
+                                st.download_button(
+                                    label="⬇️ Download Daily Report",
+                                    data=f,
+                                    file_name=os.path.basename(latest),
+                                    mime="text/csv",
+                                    use_container_width=True
+                                )
+                    else:
+                        st.error("Failed to generate report. Check server logs.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+    
     with st.expander("🔒 Privacy"):
         st.caption("No SCADA data leaves this system. Weather metadata only for explanations.")
     

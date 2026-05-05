@@ -20,10 +20,11 @@ accelerate>=0.24.0
 opencv-python>=4.8.0
 Pillow>=10.0.0
 
-# Weather API
+# Weather API & RSS
 openmeteo-requests>=1.2.0
 requests-cache>=1.1.0
 retry-requests>=2.0.0
+feedparser>=6.0.0
 
 # API & Dashboard
 fastapi>=0.104.0

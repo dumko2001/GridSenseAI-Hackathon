@@ -198,7 +198,7 @@ curl -X POST http://localhost:8000/forecast/cluster \
 | `PRESENTATION.md` | Demo video script + slide outline |
 | `EXPLANATIONS_AND_ROADMAP.md` | System docs + production roadmap |
 | `requirements.txt` | Python dependencies |
-| `src/` | Source code (data, pipeline, API) |
+| `src/` | Source code (data, pipeline, API, scheduler) |
 | `dashboard/` | Streamlit UI |
 | `research/` | PINN experiment + satellite CNN architecture (Phase 2 proof-of-concepts) |
 | `tests/` | Test harness (10/10 passing) |
