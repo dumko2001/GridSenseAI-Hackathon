@@ -9,12 +9,9 @@ venv-external/
 __pycache__/
 *.pyc
 
-# Data & Models (Do not commit large artifacts)
-data/synthetic_scada/*.csv
-data/weather/*.parquet
-models/baseline/*.parquet
-models/baseline/*.pkl
-models/pinn/*.csv
+# Data & Models
+# We keep the small synthetic datasets for the zero-setup demo
+# models/trained/ (Exclude large models, keep metadata)
 
 # Logs & Temp
 logs/
