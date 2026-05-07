@@ -85,6 +85,10 @@ class OverrideManager:
             df.at[_, "final_forecast_MW"] = val
             df.at[_, "overridden"] = True
             df.at[_, "override_reason"] = f"Operator override: {rule.reason}"
+            if "explanation" in df.columns:
+                base_explanation = str(df.at[_, "explanation"]).strip()
+                suffix = df.at[_, "override_reason"]
+                df.at[_, "explanation"] = f"{base_explanation} {suffix}".strip()
 
         return df
 

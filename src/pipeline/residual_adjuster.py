@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
+from pipeline.physics_constraints import wind_power_curve_mw
+
 
 def compute_cloud_fraction_from_ir(ir_image_kelvin, threshold_k=230.0):
     """
@@ -21,7 +23,7 @@ def compute_cloud_fraction_from_ir(ir_image_kelvin, threshold_k=230.0):
     return float(cloud_pixels / total_pixels)
 
 
-def compute_residual_adjustment(cloud_fraction, plant_type, capacity_mw):
+def compute_residual_adjustment(cloud_fraction, plant_type, capacity_mw, baseline_mw):
     """
     Rule-based residual based on cloud fraction.
     No training required. Coefficients are physics-inspired.
@@ -31,13 +33,31 @@ def compute_residual_adjustment(cloud_fraction, plant_type, capacity_mw):
     if cloud_fraction < 0.2:
         return 0.0
     elif cloud_fraction < 0.5:
-        attenuation = cloud_fraction * 0.5
+        attenuation = cloud_fraction * 0.25
     elif cloud_fraction < 0.75:
-        attenuation = cloud_fraction * 0.65
+        attenuation = cloud_fraction * 0.35
     else:
-        attenuation = cloud_fraction * 0.75
-    residual = -attenuation * capacity_mw
+        attenuation = cloud_fraction * 0.43
+    residual = -attenuation * baseline_mw
     return residual
+
+
+def compute_wind_adjustment(wind_speed, plant_meta, baseline_mw, availability=0.965):
+    """
+    Use the weather-driven turbine curve as the primary wind correction signal.
+    """
+    if pd.isna(wind_speed):
+        return 0.0, baseline_mw
+
+    per_turbine = wind_power_curve_mw(
+        wind_speed,
+        plant_meta.get("cut_in_ms", 3.5),
+        plant_meta.get("rated_wind_ms", 12.0),
+        plant_meta.get("cut_out_ms", 25.0),
+        plant_meta.get("turbine_rated_power_mw", 2.5),
+    )
+    wind_based_mw = per_turbine * plant_meta.get("n_turbines", 1) * availability
+    return wind_based_mw - baseline_mw, wind_based_mw
 
 
 def apply_residual_layer(baseline_forecast_df, weather_df, plant_meta):
@@ -50,7 +70,7 @@ def apply_residual_layer(baseline_forecast_df, weather_df, plant_meta):
     df = baseline_forecast_df.copy()
     # Merge with weather on timestamp and plant_id
     # Use Open-Meteo cloud_cover (0-100%) as proxy for now
-    weather_sub = weather_df[["plant_id", "timestamp", "cloud_cover"]].copy()
+    weather_sub = weather_df[["plant_id", "timestamp", "cloud_cover", "wind_speed_10m"]].copy()
     weather_sub["timestamp"] = pd.to_datetime(weather_sub["timestamp"]).dt.tz_localize(None)
     df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
     df = df.merge(weather_sub, on=["plant_id", "timestamp"], how="left")
@@ -61,11 +81,22 @@ def apply_residual_layer(baseline_forecast_df, weather_df, plant_meta):
     df["plant_type"] = df["plant_id"].map(lambda x: meta_map.get(x, {}).get("type", "solar"))
     df["capacity_mw"] = df["plant_id"].map(lambda x: meta_map.get(x, {}).get("capacity_mw", 100.0))
 
-    df["residual_MW"] = df.apply(
-        lambda row: compute_residual_adjustment(
-            row["cloud_fraction"], row["plant_type"], row["capacity_mw"]
-        ), axis=1
-    )
+    def compute_row(row):
+        baseline = row.get("predictions", row.get("forecast_MW", 0.0))
+        if row["plant_type"] == "wind":
+            plant = meta_map.get(row["plant_id"], {})
+            residual, wind_based_mw = compute_wind_adjustment(
+                row.get("wind_speed_10m"),
+                plant,
+                baseline,
+            )
+            return pd.Series({"residual_MW": residual, "wind_based_MW": wind_based_mw})
+        residual = compute_residual_adjustment(
+            row["cloud_fraction"], row["plant_type"], row["capacity_mw"], baseline
+        )
+        return pd.Series({"residual_MW": residual, "wind_based_MW": np.nan})
+
+    df[["residual_MW", "wind_based_MW"]] = df.apply(compute_row, axis=1)
     # Add residual to baseline prediction
     if "predictions" in df.columns:
         df["pre_physics_MW"] = df["predictions"] + df["residual_MW"]

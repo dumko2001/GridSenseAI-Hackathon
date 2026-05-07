@@ -38,7 +38,8 @@ def check_data_quality(scada_df, plant_meta):
 
         # 2. Flatline detection: same value repeated > 6 hours
         sub["gen_diff"] = sub["generation_MW"].diff().abs()
-        flatline_mask = sub["gen_diff"] == 0
+        active_floor = cap * (0.05 if meta.get("type", "solar") == "solar" else 0.10)
+        flatline_mask = (sub["gen_diff"] == 0) & (sub["generation_MW"] > active_floor)
         flatline_runs = []
         current_run = 0
         for is_flat in flatline_mask:
@@ -74,16 +75,24 @@ def check_data_quality(scada_df, plant_meta):
                 "message": f"{over_count} readings exceed 110% of rated capacity ({cap} MW). Sensor miscalibration likely.",
             })
 
-        # 4. Sudden spike: > 50% capacity change in 1 hour (after flatline filter)
-        sub["pct_change"] = sub["generation_MW"].pct_change().abs()
-        spike_mask = sub["pct_change"] > 0.5
+        # 4. Sudden spike: plant-type-aware threshold, ignoring expected dawn/dusk ramps.
+        prev_gen = sub["generation_MW"].shift(1).fillna(0)
+        delta = (sub["generation_MW"] - prev_gen).abs()
+        if meta.get("type", "solar") == "solar":
+            active_window = (prev_gen > cap * 0.10) & (sub["generation_MW"] > cap * 0.10)
+            spike_mask = active_window & (delta > cap * 0.35)
+            spike_label = "35% of capacity"
+        else:
+            active_window = (prev_gen > cap * 0.15) & (sub["generation_MW"] > cap * 0.15)
+            spike_mask = active_window & (delta > cap * 0.80)
+            spike_label = "80% of capacity"
         spike_count = spike_mask.sum()
         if spike_count > 0:
             issues.append({
                 "plant_id": pid,
                 "severity": "warning",
                 "type": "sudden_spike",
-                "message": f"{spike_count} instances of >50% generation change in 1 hour. Possible communication error or grid event.",
+                "message": f"{spike_count} instances of >{spike_label} change in 1 hour during active generation. Possible communication error or grid event.",
             })
 
     # Apply minimal cleaning: interpolate small gaps, floor negatives, cap over-capacity

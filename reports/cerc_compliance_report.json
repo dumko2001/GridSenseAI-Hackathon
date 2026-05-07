@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-05-06T19:27:16.255988",
+  "overall_compliant": true,
+  "total_estimated_daily_penalty_inr": 128033.0,
+  "regulation": "CERC Terms and Conditions for Tariff (2020)",
+  "plants": [
+    {
+      "plant_id": "SOL_KOPPAL_50",
+      "plant_type": "solar",
+      "capacity_mw": 50.0,
+      "cerc_limit_pct": 15.0,
+      "rmse_mw": 4.21,
+      "rmse_pct_of_cap": 8.42,
+      "mae_mw": 2.37,
+      "mae_pct_of_cap": 4.73,
+      "max_deviation_mw": 12.28,
+      "max_deviation_pct": 24.56,
+      "cerc_compliant": true,
+      "estimated_daily_penalty_inr": 28392.0,
+      "penalty_risk": "low"
+    },
+    {
+      "plant_id": "SOL_PAVAGADA_100",
+      "plant_type": "solar",
+      "capacity_mw": 100.0,
+      "cerc_limit_pct": 15.0,
+      "rmse_mw": 5.72,
+      "rmse_pct_of_cap": 5.72,
+      "mae_mw": 3.5,
+      "mae_pct_of_cap": 3.5,
+      "max_deviation_mw": 17.12,
+      "max_deviation_pct": 17.12,
+      "cerc_compliant": true,
+      "estimated_daily_penalty_inr": 14020.0,
+      "penalty_risk": "low"
+    },
+    {
+      "plant_id": "SOL_RAICHUR_200",
+      "plant_type": "solar",
+      "capacity_mw": 200.0,
+      "cerc_limit_pct": 15.0,
+      "rmse_mw": 16.74,
+      "rmse_pct_of_cap": 8.37,
+      "mae_mw": 9.68,
+      "mae_pct_of_cap": 4.84,
+      "max_deviation_mw": 54.4,
+      "max_deviation_pct": 27.2,
+      "cerc_compliant": true,
+      "estimated_daily_penalty_inr": 77418.0,
+      "penalty_risk": "low"
+    },
+    {
+      "plant_id": "WIND_CHITRADURGA_80",
+      "plant_type": "wind",
+      "capacity_mw": 80.0,
+      "cerc_limit_pct": 12.0,
+      "rmse_mw": 5.01,
+      "rmse_pct_of_cap": 6.26,
+      "mae_mw": 3.28,
+      "mae_pct_of_cap": 4.1,
+      "max_deviation_mw": 15.47,
+      "max_deviation_pct": 19.33,
+      "cerc_compliant": true,
+      "estimated_daily_penalty_inr": 8203.0,
+      "penalty_risk": "low"
+    },
+    {
+      "plant_id": "WIND_HASSAN_150",
+      "plant_type": "wind",
+      "capacity_mw": 150.0,
+      "cerc_limit_pct": 12.0,
+      "rmse_mw": 3.3,
+      "rmse_pct_of_cap": 2.2,
+      "mae_mw": 2.51,
+      "mae_pct_of_cap": 1.67,
+      "max_deviation_mw": 7.26,
+      "max_deviation_pct": 4.84,
+      "cerc_compliant": true,
+      "estimated_daily_penalty_inr": 0.0,
+      "penalty_risk": "low"
+    }
+  ]
+}

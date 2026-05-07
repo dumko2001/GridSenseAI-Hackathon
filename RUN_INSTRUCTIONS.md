@@ -1,7 +1,7 @@
 # GridSense AI — Run Instructions
 **For Hackathon Jurors & Evaluators**
 
-These instructions are designed to get the system running in **under 5 minutes** on any macOS, Linux, or Windows machine with Python 3.10+.
+These instructions are designed to get the system running reliably for demo and evaluation on this prepared workspace.
 
 ---
 
@@ -14,7 +14,48 @@ These instructions are designed to get the system running in **under 5 minutes**
 
 ---
 
-## Option A: Local Python Setup (Recommended for Demo)
+## Option A: External-Drive Demo Setup (Recommended on This Machine)
+
+### Step 1: Enter Directory
+```bash
+cd gridsense-prototype
+```
+
+### Step 2: Build the External-Drive Environment
+```bash
+./scripts/bootstrap_external.sh
+```
+
+This creates:
+- `venv-external/` for the runnable Python environment
+- `.runtime/` for Hugging Face, Torch, pip, temp, and app caches
+
+### Step 3: Run Tests
+```bash
+./scripts/run_tests_external.sh
+```
+Expected: **16 passed**
+
+### Step 4: Start the API
+```bash
+./scripts/run_api_external.sh
+```
+
+### Step 5: Start the Dashboard
+```bash
+./scripts/run_dashboard_external.sh
+```
+
+### Step 6: Demo Flows
+1. Plant forecast: `SOL_PAVAGADA_100`, horizon `24`
+2. Wind forecast: `WIND_HASSAN_150`, horizon `24`
+3. Cluster API: call `/forecast/cluster` with 3 plants
+4. Bulk API: upload a CSV to `/forecast/bulk`
+5. Compliance: open `/compliance`
+
+---
+
+## Option B: Generic Local Python Setup
 
 ### Step 1: Extract & Enter Directory
 ```bash
@@ -39,7 +80,7 @@ pip install -r requirements.txt
 *This downloads ~2GB of packages including PyTorch and Chronos-Bolt. Takes 3–5 minutes.*
 
 ### Step 4: Verify Data Exists
-Pre-generated data is included in the submission:
+This working copy should already contain generated benchmark artifacts:
 ```bash
 ls data/synthetic_scada/synthetic_scada.csv
 ls data/weather/weather_all.parquet
@@ -57,7 +98,7 @@ python src/pipeline/baseline_forecaster.py  # ~60 seconds
 ```bash
 pytest tests/test_harness.py -v
 ```
-Expected: **9 passed, 1 skipped**
+Expected: **16 passed**
 
 ### Step 6: Start the API Server
 ```bash
@@ -94,7 +135,7 @@ Open http://localhost:8501 in your browser.
 
 ---
 
-## Option B: Docker (If Python Setup Fails)
+## Option C: Docker (If Python Setup Fails)
 
 Requires Docker Desktop installed.
 
@@ -109,7 +150,7 @@ Wait 5–10 minutes for the image to build. Then:
 
 ---
 
-## Option C: Quick API Test (No Dashboard)
+## Option D: Quick API Test (No Dashboard)
 
 With the API server running:
 
@@ -138,7 +179,7 @@ curl -X POST http://localhost:8000/forecast \
 | HuggingFace download hangs | Model downloads on first run. If slow, use a VPN or wait. ~500MB download. |
 | Port 8000 already in use | Kill existing process: `lsof -ti:8000 \| xargs kill -9` then restart |
 | Streamlit shows "Please wait" | The first forecast loads the Chronos model (~10s). Subsequent calls are instant. |
-| Groq explanations fail | Check `.env` has `GROQ_API_KEY`. If missing, template explanations auto-activate. |
+| Explanation text looks generic | Explanations are deterministic templates. Check forecast inputs and physics clamp reasons. |
 | Windows PowerShell won't activate venv | Use `venv\Scripts\Activate.ps1` or Command Prompt instead |
 
 ---
@@ -147,11 +188,10 @@ curl -X POST http://localhost:8000/forecast \
 
 Copy `.env.example` to `.env` and fill in:
 ```bash
-GROQ_API_KEY=your_key_here    # For AI explanations (optional, fallback works without it)
 API_URL=http://localhost:8000  # Dashboard talks to this API
 ```
 
-**Privacy note:** The Groq API key is used ONLY for natural language explanations. No SCADA data or sensitive grid information is ever sent to Groq — only weather metadata (cloud %, wind speed, GHI).
+**Privacy note:** No forecast or SCADA data leaves this system for explanations. The explanation layer is fully local and deterministic.
 
 ---
 
@@ -179,10 +219,9 @@ API_URL=http://localhost:8000  # Dashboard talks to this API
 ### Dashboard Screenshot Description
 - **Left sidebar:** Plant selector, horizon picker, Generate button
 - **Main chart:** Purple forecast line with lavender confidence band
-- **Right panel:** Peak/min metrics, AI explanations, physics alerts
+- **Right panel:** Peak/min metrics, offline explanations, physics alerts
 - **Bottom:** Hourly table with CSV download button
 
 ---
 
-**Expected total setup time: 3–5 minutes.**
-**If anything fails, the test harness will tell you exactly what's wrong: `pytest tests/test_harness.py -v`**
+**If anything fails, the test harness and API endpoints will surface the issue quickly: `./scripts/run_tests_external.sh`**

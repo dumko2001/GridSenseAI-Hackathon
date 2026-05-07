@@ -9,11 +9,18 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from runtime_config import chdir_project_root, configure_runtime
+
+configure_runtime()
+chdir_project_root()
+
 from data.scada_generator import PLANTS
 from pipeline.baseline_forecaster import load_pipeline, forecast_baseline
 from pipeline.residual_adjuster import apply_residual_layer
 from pipeline.physics_constraints import apply_physics_constraints
+from pipeline.uncertainty import apply_confidence_bands
 from pipeline.explainability import generate_explanations
+from pipeline.operator_override import get_override_manager
 
 
 def run_full_pipeline(plant_id: str, forecast_timestamp: str = None, prediction_length: int = 24):
@@ -53,8 +60,10 @@ def run_full_pipeline(plant_id: str, forecast_timestamp: str = None, prediction_
     pred_df = apply_residual_layer(pred_df, future_weather, PLANTS)
     # Physics
     pred_df = apply_physics_constraints(pred_df, future_weather, PLANTS)
+    pred_df = apply_confidence_bands(pred_df, PLANTS)
     # Explainability (100% offline template-based)
     pred_df = generate_explanations(pred_df)
+    pred_df = get_override_manager().apply_overrides(pred_df)
 
     return pred_df
 

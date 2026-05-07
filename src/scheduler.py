@@ -19,12 +19,19 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from runtime_config import chdir_project_root, configure_runtime
+
+configure_runtime()
+chdir_project_root()
+
 from data.scada_generator import PLANTS
 from pipeline.baseline_forecaster import load_pipeline, forecast_baseline
 from pipeline.residual_adjuster import apply_residual_layer
 from pipeline.physics_constraints import apply_physics_constraints
+from pipeline.uncertainty import apply_confidence_bands
 from pipeline.explainability import generate_explanations
 from pipeline.data_quality import check_data_quality
+from pipeline.operator_override import get_override_manager
 
 
 def run_scheduled_forecast(plant_ids, prediction_hours=24, report_dir="reports",
@@ -58,11 +65,6 @@ def run_scheduled_forecast(plant_ids, prediction_hours=24, report_dir="reports",
 
         pred_df = forecast_baseline(pipeline, ctx, prediction_length=prediction_hours)
         pred_df["plant_id"] = pid
-        if "0.1" in pred_df.columns:
-            pred_df["confidence_lower"] = pred_df["0.1"]
-        if "0.9" in pred_df.columns:
-            pred_df["confidence_upper"] = pred_df["0.9"]
-
         last_ts = ctx["timestamp"].max()
         future_weather = weather[
             (weather["plant_id"] == pid) &
@@ -72,7 +74,9 @@ def run_scheduled_forecast(plant_ids, prediction_hours=24, report_dir="reports",
 
         pred_df = apply_residual_layer(pred_df, future_weather, PLANTS)
         pred_df = apply_physics_constraints(pred_df, future_weather, PLANTS)
+        pred_df = apply_confidence_bands(pred_df, PLANTS)
         pred_df = generate_explanations(pred_df)
+        pred_df = get_override_manager().apply_overrides(pred_df)
 
         for _, row in pred_df.iterrows():
             all_results.append({
@@ -85,6 +89,8 @@ def run_scheduled_forecast(plant_ids, prediction_hours=24, report_dir="reports",
                 "uncertainty_band_MW": round(float(row.get("confidence_upper", 0) - row.get("confidence_lower", 0)), 1),
                 "was_clamped": bool(row.get("was_clamped", False)),
                 "clamp_reason": row.get("clamp_reason", ""),
+                "overridden": bool(row.get("overridden", False)),
+                "override_reason": row.get("override_reason", ""),
                 "explanation": row.get("explanation", "") if include_explanations else "",
                 "generated_at": datetime.now(),
             })

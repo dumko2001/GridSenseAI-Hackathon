@@ -75,7 +75,7 @@ You need a login to download the HDF5 satellite files. Do it today: https://www.
 | **Satellite Feed** | Open-Meteo cloud proxy | MOSDAC IR imagery + Satpy pipeline | ₹0 (ISRO) |
 | **Residual Model** | Rule-based (cloud % → MW) | Small CNN (ResNet-18) trained on INSAT patches | ₹0 (train once) |
 | **Physics Layer** | Rule-based clamping | DeepXDE PINN for complex terrain | ₹0 (open source) |
-| **Explainability** | Groq API (Llama 3.3 70B) | On-premise Llama 3.3 70B via vLLM or Sarvam on-prem | ₹0.01/call (Groq) → ₹0 (on-prem) |
+| **Explainability** | Deterministic local templates | On-premise multilingual template pack or vLLM only if public-facing prose is required | ₹0 |
 | **API Server** | FastAPI + Uvicorn (single process) | FastAPI + Gunicorn + 4 workers behind NGINX | ₹0 (open source) |
 | **Dashboard** | Streamlit (Python) | React.js + WebSocket live updates | ₹0 (open source) |
 | **Database** | CSV/Parquet files | TimescaleDB (PostgreSQL extension) for time-series | ₹0 (open source) |
@@ -136,7 +136,7 @@ The Streamlit dashboard (`dashboard/app.py`) now has:
    - Hover tooltips showing exact MW values
 
 4. **Right-side insights panel:**
-   - Top 3 AI-generated explanations
+   - Top 3 operator-facing explanations
    - Physics alert cards (when clamps fire)
    - Weather driver summary (cloud %, wind speed, residual)
 
@@ -169,14 +169,14 @@ The Streamlit dashboard (`dashboard/app.py`) now has:
          • Wind: Is output > turbine power curve? If yes, cap it.
          • Hard cap: Never exceed plant rated capacity.
     ↓
-[Pass 4] Groq LLM generates human explanation from weather metadata
+[Pass 4] Deterministic template engine generates the operator explanation
     ↓
 [Response] JSON returned to Streamlit
     ↓
 [Dashboard] Renders chart + insights + table + download button
 ```
 
-**Total latency:** ~2–4 seconds for a 24-hour forecast (including Groq API call).
+**Total latency:** ~2–4 seconds for a 24-hour forecast after model warm-up, with no external explanation call.
 
 ---
 
@@ -251,7 +251,7 @@ Error attribution per pass:
 
 ```
 gridsense-prototype/
-├── .env                          ✅ Groq API key saved (gitignored)
+├── .env                          ✅ Optional local API config only
 ├── .env.example                  ✅ Template for jurors
 ├── src/
 │   ├── data/
@@ -262,7 +262,7 @@ gridsense-prototype/
 │   │   ├── baseline_forecaster.py ✅ Chronos-Bolt inference + metrics
 │   │   ├── residual_adjuster.py   ✅ Cloud residual rules
 │   │   ├── physics_constraints.py ✅ Power curve clamps
-│   │   ├── explainability.py      ✅ Groq LLM + template fallback (offline default)
+│   │   ├── explainability.py      ✅ Deterministic template engine (offline)
 │   │   └── orchestrator.py        ✅ End-to-end glue
 │   └── api/
 │       └── main.py                ✅ FastAPI backend + cluster aggregation

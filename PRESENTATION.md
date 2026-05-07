@@ -37,7 +37,7 @@
 
 **Visual:** Architecture diagram (4-pass pipeline)  
 **Script:**
-> "GridSense AI uses a 4-pass fusion architecture. Pass 1: A foundation time-series model reads 7 days of SCADA history and predicts the next 24 hours. Pass 2: Real-time weather data from Open-Meteo adjusts for sudden cloud cover or wind shifts. Pass 3: Physics constraints enforce turbine power curves and solar irradiance limits. Pass 4: A language model explains every forecast in plain English for the control room operator."
+> "GridSense AI uses a 4-pass fusion architecture. Pass 1: A foundation time-series model reads 7 days of SCADA history and predicts the next 24 hours. Pass 2: Real-time weather data from Open-Meteo adjusts for sudden cloud cover or wind shifts. Pass 3: Physics constraints enforce turbine power curves and solar irradiance limits. Pass 4: A deterministic local explanation engine explains every forecast in operator-ready language."
 
 **On screen:**
 ```
@@ -173,7 +173,7 @@ If the jury asks for a live demo and something breaks:
 |---------|--------|
 | API won't start | Show pre-recorded screen capture |
 | Model download slow | Say "First load takes 30s, then it's instant" |
-| Groq API fails | Show template explanation fallback |
+| Explanation text questioned | Show the deterministic explanation logic and emphasize offline compliance |
 | No internet | Show offline mode: template explanations + cached forecasts |
 
 **Always have the pre-recorded video as primary submission. Live demo is bonus.**

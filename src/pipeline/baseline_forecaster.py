@@ -2,11 +2,18 @@
 Baseline Forecaster: Chronos-Bolt-Small zero-shot inference.
 Trains/fine-tunes nothing. Loads pretrained model and forecasts.
 """
+import sys
+from pathlib import Path
 import pandas as pd
 import numpy as np
-from pathlib import Path
 import pickle
 import warnings
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from runtime_config import configure_runtime, describe_runtime
+
+configure_runtime()
 
 try:
     from chronos import ChronosBoltPipeline
@@ -23,6 +30,17 @@ def load_pipeline(model_id=MODEL_ID, device="cpu"):
     if ChronosBoltPipeline is None:
         raise RuntimeError("chronos-forecasting not installed.")
     print(f"Loading Chronos-Bolt model: {model_id} ...")
+    print(f"Runtime paths: {describe_runtime()}")
+    try:
+        pipeline = ChronosBoltPipeline.from_pretrained(
+            model_id,
+            device_map=device,
+            local_files_only=True,
+        )
+        print("Model loaded from local cache.")
+        return pipeline
+    except Exception as local_error:
+        print(f"Local cache miss, falling back to network download: {local_error}")
     pipeline = ChronosBoltPipeline.from_pretrained(model_id, device_map=device)
     print("Model loaded.")
     return pipeline

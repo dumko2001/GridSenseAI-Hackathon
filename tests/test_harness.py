@@ -7,17 +7,25 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+from runtime_config import chdir_project_root, configure_runtime
+
+configure_runtime()
+chdir_project_root()
+
 import pandas as pd
 import numpy as np
 import pytest
+from fastapi.testclient import TestClient
 
 from data.scada_generator import generate_realistic_scada, PLANTS, ANOMALIES
 from data.weather_fetcher import fetch_all_weather
 from pipeline.baseline_forecaster import run_baseline_forecast
 from pipeline.residual_adjuster import apply_residual_layer
 from pipeline.physics_constraints import apply_physics_constraints
+from pipeline.uncertainty import apply_confidence_bands
 from pipeline.explainability import generate_explanations
 from pipeline.orchestrator import run_full_pipeline
+from api.main import app
 
 
 class TestDataPipeline:
@@ -88,9 +96,12 @@ class TestPhysicsConstraints:
         wf = pd.read_parquet("data/weather/weather_all.parquet")
         res = apply_residual_layer(bf, wf, PLANTS)
         phy = apply_physics_constraints(res, wf, PLANTS)
-        out = generate_explanations(phy)
+        out = apply_confidence_bands(phy, PLANTS)
+        out = generate_explanations(out)
         assert out["explanation"].notna().all()
         assert (out["explanation"].str.len() > 10).all()
+        assert (out["confidence_upper"] >= out["final_forecast_MW"]).all()
+        assert (out["confidence_lower"] <= out["final_forecast_MW"]).all()
 
 
 class TestIntegration:
@@ -99,17 +110,86 @@ class TestIntegration:
         assert len(out) == 6
         assert "final_forecast_MW" in out.columns
         assert "explanation" in out.columns
+        assert "confidence_lower" in out.columns
+        assert "confidence_upper" in out.columns
 
 
 class TestAPIContract:
     def test_health_endpoint(self):
-        # Requires server running; skip if not
-        try:
-            import requests
-            r = requests.get("http://localhost:8000/health", timeout=2)
-            assert r.status_code == 200
-        except Exception:
-            pytest.skip("API server not running")
+        client = TestClient(app)
+        r = client.get("/health")
+        assert r.status_code == 200
+
+    def test_forecast_endpoint_returns_rows(self):
+        client = TestClient(app)
+        r = client.post("/forecast", json={"plant_id": "WIND_CHITRADURGA_80", "prediction_hours": 6, "language": "en"})
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 6
+        assert "forecast_MW" in body[0]
+        assert body[0]["confidence_upper"] >= body[0]["forecast_MW"]
+
+    def test_forecast_supports_kannada(self):
+        client = TestClient(app)
+        r = client.post("/forecast", json={"plant_id": "SOL_PAVAGADA_100", "prediction_hours": 6, "language": "kn"})
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 6
+        assert "ಮೂಲ ಅಂದಾಜು" in body[0]["explanation"] or "ಸೌರ" in body[0]["explanation"]
+
+    def test_bulk_forecast_returns_csv(self):
+        client = TestClient(app)
+        csv_bytes = b"plant_id,prediction_hours,language\nSOL_PAVAGADA_100,6,en\nWIND_HASSAN_150,6,en\n"
+        r = client.post("/forecast/bulk", files={"file": ("batch.csv", csv_bytes, "text/csv")})
+        assert r.status_code == 200
+        assert "text/csv" in r.headers["content-type"]
+        text = r.text
+        assert "request_index" in text
+        assert "SOL_PAVAGADA_100" in text
+        assert "WIND_HASSAN_150" in text
+
+    def test_cluster_endpoint_returns_aggregate(self):
+        client = TestClient(app)
+        r = client.post(
+            "/forecast/cluster",
+            json={
+                "plant_ids": ["SOL_PAVAGADA_100", "SOL_KOPPAL_50", "WIND_CHITRADURGA_80"],
+                "prediction_hours": 6,
+                "cluster_name": "North Karnataka",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 6
+        assert body[0]["cluster_name"] == "North Karnataka"
+        assert len(body[0]["plant_breakdown"]) >= 2
+
+    def test_override_endpoint_affects_forecast(self):
+        client = TestClient(app)
+        client.post(
+            "/override",
+            json={
+                "plant_id": "SOL_PAVAGADA_100",
+                "start_time": "2025-04-01 00:00:00",
+                "end_time": "2025-04-01 05:00:00",
+                "override_type": "zero",
+                "reason": "Maintenance window",
+                "created_by": "test",
+            },
+        )
+        r = client.post("/forecast", json={"plant_id": "SOL_PAVAGADA_100", "prediction_hours": 6})
+        assert r.status_code == 200
+        body = r.json()
+        assert body[0]["forecast_MW"] == 0.0
+        assert "Operator override" in body[0]["explanation"]
+
+    def test_compliance_endpoint_uses_final_pipeline(self):
+        client = TestClient(app)
+        r = client.get("/compliance")
+        assert r.status_code == 200
+        body = r.json()
+        assert "overall_compliant" in body
+        assert "plants" in body
 
 
 if __name__ == "__main__":

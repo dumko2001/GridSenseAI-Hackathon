@@ -181,7 +181,7 @@ curl -X POST http://localhost:8000/forecast/cluster \
 ### What the Jury Will See
 - **Dashboard:** Plotly chart with forecast line + lavender confidence band
 - **Metrics:** Peak/min forecast, average uncertainty, physics clamp count
-- **Insights:** AI-generated natural language explanations per hour
+- **Insights:** Deterministic operator-facing explanations per hour
 - **Alerts:** Physics clamp reasons when forecasts hit real-world limits
 - **Export:** One-click CSV download + API code snippet
 

@@ -19,8 +19,17 @@ The template is objectively more useful for operational decision-making.
 import pandas as pd
 
 
+SUPPORTED_LANGUAGES = {"en", "kn"}
+
+
+def _normalize_language(language: str | None) -> str:
+    value = (language or "en").strip().lower()
+    return value if value in SUPPORTED_LANGUAGES else "en"
+
+
 def generate_explanation(row):
     """Generate operationally useful explanation from forecast row."""
+    language = _normalize_language(row.get("language"))
     parts = []
     plant_type = "Solar" if "SOL_" in str(row.get("plant_id", "")) else "Wind"
     base = row.get("predictions", row.get("baseline_MW", 0))
@@ -30,12 +39,33 @@ def generate_explanation(row):
     cloud = row.get("cloud_fraction", 0)
     ws = row.get("wind_speed_10m", 0)
     hour = pd.to_datetime(row["timestamp"]).hour
+    is_wind = plant_type == "Wind"
+
+    if language == "kn":
+        parts.append(f"{'ಸೌರ' if not is_wind else 'ಗಾಳಿ'} ಘಟಕ {hour:02d}:00 IST:")
+        parts.append(f"ಮೂಲ ಅಂದಾಜು {base:.1f} MW.")
+        if abs(res) > 1:
+            if is_wind and pd.notna(ws):
+                parts.append(f"ಗಾಳಿ ವೇಗ {float(ws):.1f} m/s ಆಧಾರವಾಗಿ {final:.1f} MW ಗೆ ಸರಿಪಡಿಸಲಾಗಿದೆ.")
+            elif res < 0:
+                parts.append(f"ಮೋಡಾವರಣ ({cloud*100:.0f}%) ಕಾರಣ {abs(res):.1f} MW ಇಳಿಕೆ.")
+            else:
+                parts.append(f"{res:.1f} MW ಹೆಚ್ಚುವರಿ ಸರಿಪಡింపు.")
+        if clamp:
+            parts.append(f"ಭೌತಿಕ ಮಿತಿ ಅನ್ವಯಿಸಲಾಗಿದೆ: {clamp}")
+        if final < base * 0.8:
+            parts.append("ಹವಾಮಾನ ಅಸ್ಥಿರತೆಯಿಂದ ವಿಶ್ವಾಸ ವ್ಯಾಪ್ತಿ ವಿಸ್ತರಿಸಲಾಗಿದೆ.")
+        return " ".join(parts)
 
     parts.append(f"{plant_type} plant at {hour:02d}:00 IST:")
     parts.append(f"Baseline forecast {base:.1f} MW.")
 
     if abs(res) > 1:
-        if res < 0:
+        if is_wind and pd.notna(ws):
+            parts.append(
+                f"Weather-driven adjustment to {final:.1f} MW based on {float(ws):.1f} m/s wind speed."
+            )
+        elif res < 0:
             parts.append(f"Downward adjustment of {abs(res):.1f} MW due to cloud cover ({cloud*100:.0f}%).")
         else:
             parts.append(f"Upward adjustment of {res:.1f} MW.")
@@ -49,9 +79,15 @@ def generate_explanation(row):
     return " ".join(parts)
 
 
-def generate_explanations(df):
+def generate_explanations(df, language: str | None = None):
     """Add explanation column to forecast DataFrame."""
     df = df.copy()
+    if language is not None:
+        df["language"] = _normalize_language(language)
+    elif "language" in df.columns:
+        df["language"] = df["language"].map(_normalize_language)
+    else:
+        df["language"] = "en"
     df["explanation"] = df.apply(generate_explanation, axis=1)
     return df
 
