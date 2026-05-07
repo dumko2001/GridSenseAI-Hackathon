@@ -1,4 +1,4 @@
-# GridSense AI .gitignore
+# GridSense AI .gitignore - Focused Production Build
 
 # Environments
 venv/
@@ -9,19 +9,19 @@ venv-external/
 __pycache__/
 *.pyc
 
-# Data & Models
-# We keep the synthetic data for the demo to work
-# data/raw/
-# data/processed/
-# models/trained/
+# Data & Models (Do not commit large artifacts)
+data/synthetic_scada/*.csv
+data/weather/*.parquet
+models/baseline/*.parquet
+models/baseline/*.pkl
+models/pinn/*.csv
 
 # Logs & Temp
 logs/
 tmp/
 .pytest_cache/
 .streamlit/config.toml
-reports/*.csv
-reports/*.pdf
+reports/
 
 # System
 .DS_Store
